@@ -1116,16 +1116,8 @@ const GameArena: React.FC = () => {
         
         // Handle grenade special physics
         if (proj.type === 'grenade') {
-          // Decrement fuse timer FIRST (this is the key fix!)
-          const newFuseTime = proj.fuseTime - 1
-          
-          // Debug logging for grenade fuse
-          if (newFuseTime % 30 === 0) { // Log every half second
-            console.log(`🎯 Grenade fuse: ${newFuseTime} frames remaining (${(newFuseTime/60).toFixed(1)}s)`)
-          }
-          
-          // Check if grenade should explode BEFORE physics
-          if (newFuseTime <= 0) {
+          // Check if grenade should explode FIRST (before any physics)
+          if (proj.fuseTime <= 0) {
             console.log('💥 GRENADE EXPLODING!')
             
             // Create explosion immediately
@@ -1142,6 +1134,14 @@ const GameArena: React.FC = () => {
             
             // Mark projectile as inactive
             return { ...proj, active: false }
+          }
+          
+          // Decrement fuse timer AFTER explosion check
+          const newFuseTime = proj.fuseTime - 1
+          
+          // Debug logging for grenade fuse
+          if (newFuseTime % 30 === 0) { // Log every half second
+            console.log(`🎯 Grenade fuse: ${newFuseTime} frames remaining (${(newFuseTime/60).toFixed(1)}s)`)
           }
           
           // Apply physics AFTER fuse check
@@ -1404,8 +1404,8 @@ const GameArena: React.FC = () => {
         drawTrajectoryPreview(ctx)
       }
 
-      // Update projectiles physics only during firing phase
-      if (gameState.gamePhase === 'firing' && gameState.projectiles.length > 0) {
+      // Update projectiles physics whenever there are active projectiles
+      if (gameState.projectiles.some(p => p.active)) {
         updateProjectiles()
       }
 
