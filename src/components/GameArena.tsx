@@ -1253,6 +1253,164 @@ const GameArena: React.FC = () => {
     })
   }
 
+  // Enhanced wind indicator with dramatic visual effects
+  const drawWindIndicator = (ctx: CanvasRenderingContext2D) => {
+    const windStrength = Math.abs(gameState.wind)
+    const windDirection = gameState.wind > 0 ? 'right' : 'left'
+    
+    // Wind strength indicator background with gradient
+    const gradient = ctx.createLinearGradient(15, 25, 215, 25)
+    gradient.addColorStop(0, 'rgba(0, 0, 0, 0.8)')
+    gradient.addColorStop(1, 'rgba(0, 0, 0, 0.6)')
+    ctx.fillStyle = gradient
+    ctx.fillRect(15, 25, 200, 45)
+    
+    // Border with wind-themed color
+    ctx.strokeStyle = windStrength > 2 ? '#ef4444' : windStrength > 1 ? '#f59e0b' : '#22c55e'
+    ctx.lineWidth = 2
+    ctx.strokeRect(15, 25, 200, 45)
+    
+    // Wind text with enhanced styling
+    ctx.fillStyle = '#ffffff'
+    ctx.font = 'bold 16px Inter'
+    ctx.textAlign = 'left'
+    ctx.fillText(`Wind: ${windStrength.toFixed(1)}`, 25, 45)
+    
+    // Wind strength bar with dramatic colors
+    const barWidth = 120
+    const barHeight = 12
+    const barX = 25
+    const barY = 50
+    
+    // Background bar with inner shadow effect
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'
+    ctx.fillRect(barX, barY, barWidth, barHeight)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'
+    ctx.fillRect(barX + 1, barY + 1, barWidth - 2, barHeight - 2)
+    
+    // Wind strength fill with gradient
+    const fillWidth = Math.min((windStrength / 3) * barWidth, barWidth) // Max wind is 3
+    const barGradient = ctx.createLinearGradient(barX, barY, barX + fillWidth, barY)
+    
+    if (windStrength > 2.5) {
+      barGradient.addColorStop(0, '#dc2626') // Strong wind - red
+      barGradient.addColorStop(1, '#ef4444')
+    } else if (windStrength > 1.5) {
+      barGradient.addColorStop(0, '#f59e0b') // Medium wind - orange
+      barGradient.addColorStop(1, '#fbbf24')
+    } else {
+      barGradient.addColorStop(0, '#22c55e') // Light wind - green
+      barGradient.addColorStop(1, '#16a34a')
+    }
+    
+    ctx.fillStyle = barGradient
+    ctx.fillRect(barX, barY, fillWidth, barHeight)
+    
+    // Wind strength text overlay
+    ctx.fillStyle = '#000000'
+    ctx.font = 'bold 10px Inter'
+    ctx.textAlign = 'center'
+    const strengthText = windStrength > 2.5 ? 'STRONG' : windStrength > 1.5 ? 'MEDIUM' : 'LIGHT'
+    ctx.fillText(strengthText, barX + barWidth/2, barY + 8)
+    
+    // Enhanced wind direction arrow with animation
+    const arrowX = 155
+    const arrowY = 47
+    const arrowSize = 15 + Math.sin(Date.now() * 0.005) * 3 // Pulsing arrow
+    
+    ctx.strokeStyle = '#ffffff'
+    ctx.fillStyle = windStrength > 2 ? '#ef4444' : windStrength > 1 ? '#fbbf24' : '#22c55e'
+    ctx.lineWidth = 3
+    ctx.beginPath()
+    
+    if (gameState.wind > 0) {
+      // Right arrow with enhanced design
+      ctx.moveTo(arrowX, arrowY)
+      ctx.lineTo(arrowX + arrowSize, arrowY)
+      ctx.moveTo(arrowX + arrowSize - 6, arrowY - 6)
+      ctx.lineTo(arrowX + arrowSize, arrowY)
+      ctx.lineTo(arrowX + arrowSize - 6, arrowY + 6)
+      ctx.stroke()
+      
+      // Arrow fill
+      ctx.beginPath()
+      ctx.moveTo(arrowX + arrowSize - 6, arrowY - 6)
+      ctx.lineTo(arrowX + arrowSize, arrowY)
+      ctx.lineTo(arrowX + arrowSize - 6, arrowY + 6)
+      ctx.closePath()
+      ctx.fill()
+    } else if (gameState.wind < 0) {
+      // Left arrow with enhanced design
+      ctx.moveTo(arrowX + arrowSize, arrowY)
+      ctx.lineTo(arrowX, arrowY)
+      ctx.moveTo(arrowX + 6, arrowY - 6)
+      ctx.lineTo(arrowX, arrowY)
+      ctx.lineTo(arrowX + 6, arrowY + 6)
+      ctx.stroke()
+      
+      // Arrow fill
+      ctx.beginPath()
+      ctx.moveTo(arrowX + 6, arrowY - 6)
+      ctx.lineTo(arrowX, arrowY)
+      ctx.lineTo(arrowX + 6, arrowY + 6)
+      ctx.closePath()
+      ctx.fill()
+    } else {
+      // No wind indicator
+      ctx.beginPath()
+      ctx.arc(arrowX + arrowSize/2, arrowY, 4, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    
+    // Animated wind particles with enhanced physics
+    const time = Date.now() / 1000
+    const particleCount = Math.floor(windStrength * 3) + 5 // More particles for stronger wind
+    
+    for (let i = 0; i < particleCount; i++) {
+      const baseX = 50 + (i * 15)
+      const baseY = 85 + Math.sin(time * 2 + i * 0.8) * 8
+      
+      // Wind affects particle movement dramatically
+      const windOffset = gameState.wind * 4 * Math.sin(time * 3 + i)
+      const x = baseX + windOffset
+      const y = baseY + Math.sin(time * 4 + i * 0.5) * 6
+      
+      // Particle opacity based on wind strength
+      const alpha = (0.4 + Math.sin(time * 5 + i) * 0.3) * Math.min(windStrength / 2, 1)
+      
+      // Particle color based on wind strength
+      const particleColor = windStrength > 2 ? '255, 100, 100' : windStrength > 1 ? '255, 200, 100' : '255, 255, 255'
+      ctx.fillStyle = `rgba(${particleColor}, ${alpha})`
+      
+      // Particle size based on wind strength
+      const particleSize = 1 + windStrength * 0.5
+      ctx.beginPath()
+      ctx.arc(x, y, particleSize, 0, Math.PI * 2)
+      ctx.fill()
+      
+      // Add particle trails for strong wind
+      if (windStrength > 2) {
+        ctx.strokeStyle = `rgba(${particleColor}, ${alpha * 0.5})`
+        ctx.lineWidth = 1
+        ctx.beginPath()
+        ctx.moveTo(x - gameState.wind * 2, y)
+        ctx.lineTo(x, y)
+        ctx.stroke()
+      }
+    }
+    
+    // Wind impact warning for strong winds
+    if (windStrength > 2.5) {
+      ctx.fillStyle = '#ef4444'
+      ctx.font = 'bold 12px Inter'
+      ctx.textAlign = 'center'
+      const warningAlpha = 0.7 + Math.sin(time * 8) * 0.3
+      ctx.globalAlpha = warningAlpha
+      ctx.fillText('⚠️ STRONG WIND!', 115, 80)
+      ctx.globalAlpha = 1
+    }
+  }
+
   const drawTrajectoryPreview = (ctx: CanvasRenderingContext2D) => {
     const currentChar = gameState.characters[gameState.currentPlayer]
     if (!currentChar) return
@@ -1638,6 +1796,9 @@ const GameArena: React.FC = () => {
       
       // Draw explosions
       drawExplosions(ctx)
+      
+      // Draw enhanced wind indicator
+      drawWindIndicator(ctx)
       
       // Draw trajectory preview if aiming
       if (gameState.gamePhase === 'aiming') {
