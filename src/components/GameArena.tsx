@@ -1045,14 +1045,14 @@ const GameArena: React.FC = () => {
           
           // Bounce off left/right screen boundaries
           if (proj.x <= 0 || proj.x >= 1000) {
-            proj.vx = -proj.vx * 0.4 // Smaller bounce coefficient (was 0.7)
+            proj.vx = -proj.vx * 0.4 // Smaller bounce coefficient
             proj.x = proj.x <= 0 ? 0 : 1000 // Keep in bounds
             bounced = true
           }
           
           // Bounce off top boundary
           if (proj.y <= 0) {
-            proj.vy = -proj.vy * 0.4 // Smaller bounce coefficient (was 0.7)
+            proj.vy = -proj.vy * 0.4 // Smaller bounce coefficient
             proj.y = 0 // Keep in bounds
             bounced = true
           }
@@ -1060,8 +1060,8 @@ const GameArena: React.FC = () => {
           // Bounce off terrain
           const terrainHeight = getTerrainHeight(proj.x, prev.terrain)
           if (proj.y >= terrainHeight - 5) {
-            proj.vy = -Math.abs(proj.vy) * 0.4 // Smaller bounce coefficient (was 0.7)
-            proj.vx *= 0.6 // More friction (was 0.8)
+            proj.vy = -Math.abs(proj.vy) * 0.4 // Smaller bounce coefficient
+            proj.vx *= 0.6 // Increased friction
             proj.y = terrainHeight - 5 // Keep above terrain
             bounced = true
           }
@@ -1074,7 +1074,7 @@ const GameArena: React.FC = () => {
           // Decrement fuse timer AFTER physics and bouncing
           proj.fuseTime--
           
-          // Explode when fuse runs out (3 seconds after launch)
+          // Explode when fuse runs out (exactly 3 seconds after launch)
           if (proj.fuseTime <= 0) {
             proj.active = false
             
