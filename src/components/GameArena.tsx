@@ -1034,6 +1034,44 @@ const GameArena: React.FC = () => {
         
         // Handle grenade special physics
         if (proj.type === 'grenade') {
+          // Apply physics first
+          proj.vx += prev.wind * 0.02
+          proj.vy += 0.5 // Gravity
+          proj.x += proj.vx
+          proj.y += proj.vy
+          
+          // Check for bouncing on all surfaces
+          let bounced = false
+          
+          // Bounce off left/right screen boundaries
+          if (proj.x <= 0 || proj.x >= 1000) {
+            proj.vx = -proj.vx * 0.4 // Smaller bounce coefficient (was 0.7)
+            proj.x = proj.x <= 0 ? 0 : 1000 // Keep in bounds
+            bounced = true
+          }
+          
+          // Bounce off top boundary
+          if (proj.y <= 0) {
+            proj.vy = -proj.vy * 0.4 // Smaller bounce coefficient (was 0.7)
+            proj.y = 0 // Keep in bounds
+            bounced = true
+          }
+          
+          // Bounce off terrain
+          const terrainHeight = getTerrainHeight(proj.x, prev.terrain)
+          if (proj.y >= terrainHeight - 5) {
+            proj.vy = -Math.abs(proj.vy) * 0.4 // Smaller bounce coefficient (was 0.7)
+            proj.vx *= 0.6 // More friction (was 0.8)
+            proj.y = terrainHeight - 5 // Keep above terrain
+            bounced = true
+          }
+          
+          // Play bounce sound if bounced
+          if (bounced) {
+            playSound(300, 0.1, 'square', 0.1)
+          }
+          
+          // Decrement fuse timer AFTER physics and bouncing
           proj.fuseTime--
           
           // Explode when fuse runs out (3 seconds after launch)
@@ -1053,43 +1091,6 @@ const GameArena: React.FC = () => {
             newCharacters = applyDamage(proj.x, proj.y, weapon?.damage || 30, explosionRadius)
             
             return proj
-          }
-          
-          // Apply physics first
-          proj.vx += prev.wind * 0.02
-          proj.vy += 0.5 // Gravity
-          proj.x += proj.vx
-          proj.y += proj.vy
-          
-          // Check for bouncing on all surfaces
-          let bounced = false
-          
-          // Bounce off left/right screen boundaries
-          if (proj.x <= 0 || proj.x >= 1000) {
-            proj.vx = -proj.vx * 0.7 // Reverse and reduce horizontal velocity
-            proj.x = proj.x <= 0 ? 0 : 1000 // Keep in bounds
-            bounced = true
-          }
-          
-          // Bounce off top boundary
-          if (proj.y <= 0) {
-            proj.vy = -proj.vy * 0.7 // Reverse and reduce vertical velocity
-            proj.y = 0 // Keep in bounds
-            bounced = true
-          }
-          
-          // Bounce off terrain
-          const terrainHeight = getTerrainHeight(proj.x, prev.terrain)
-          if (proj.y >= terrainHeight - 5) {
-            proj.vy = -Math.abs(proj.vy) * 0.7 // Bounce up with reduced velocity
-            proj.vx *= 0.8 // Reduce horizontal velocity from friction
-            proj.y = terrainHeight - 5 // Keep above terrain
-            bounced = true
-          }
-          
-          // Play bounce sound if bounced
-          if (bounced) {
-            playSound(300, 0.1, 'square', 0.1)
           }
           
           return proj
