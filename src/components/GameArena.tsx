@@ -67,7 +67,7 @@ const VEGAN_WEAPONS = [
   { id: 'bazooka', name: 'Bazooka', damage: 45, color: '#8B4513', explosionRadius: 30, bounces: false, fuseTime: 0 },
   { id: 'grenade', name: 'Grenade', damage: 50, color: '#228B22', explosionRadius: 35, bounces: true, fuseTime: 180 }, // 3 seconds at 60fps
   { id: 'shotgun', name: 'Shotgun', damage: 25, color: '#4682B4', explosionRadius: 15, bounces: false, fuseTime: 0 },
-  { id: 'uzi', name: 'Uzi', damage: 15, color: '#696969', explosionRadius: 10, bounces: false, fuseTime: 0 },
+  { id: 'uzi', name: 'Uzi (Burst)', damage: 15, color: '#696969', explosionRadius: 10, bounces: false, fuseTime: 0 }, // Fires 5 bullets
   { id: 'dynamite', name: 'Dynamite', damage: 75, color: '#DC143C', explosionRadius: 50, bounces: false, fuseTime: 300 }, // 5 seconds
   { id: 'drill', name: 'Drill', damage: 20, color: '#FFD700', explosionRadius: 60, bounces: false, fuseTime: 0 } // New tunnel digger
 ]
@@ -76,7 +76,7 @@ const MEAT_WEAPONS = [
   { id: 'bazooka', name: 'Bazooka', damage: 45, color: '#8B4513', explosionRadius: 30, bounces: false, fuseTime: 0 },
   { id: 'grenade', name: 'Grenade', damage: 50, color: '#228B22', explosionRadius: 35, bounces: true, fuseTime: 180 }, // 3 seconds at 60fps
   { id: 'shotgun', name: 'Shotgun', damage: 25, color: '#4682B4', explosionRadius: 15, bounces: false, fuseTime: 0 },
-  { id: 'uzi', name: 'Uzi', damage: 15, color: '#696969', explosionRadius: 10, bounces: false, fuseTime: 0 },
+  { id: 'uzi', name: 'Uzi (Burst)', damage: 15, color: '#696969', explosionRadius: 10, bounces: false, fuseTime: 0 }, // Fires 5 bullets
   { id: 'dynamite', name: 'Dynamite', damage: 75, color: '#DC143C', explosionRadius: 50, bounces: false, fuseTime: 300 }, // 5 seconds
   { id: 'drill', name: 'Drill', damage: 20, color: '#FFD700', explosionRadius: 60, bounces: false, fuseTime: 0 } // New tunnel digger
 ]
@@ -84,47 +84,161 @@ const MEAT_WEAPONS = [
 const GameArena: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   
-  // Sound effects using Web Audio API
-  const playSound = (frequency: number, duration: number, type: 'sine' | 'square' | 'sawtooth' | 'triangle' = 'sine', volume: number = 0.1) => {
+  // Enhanced realistic sound effects using Web Audio API
+  const createAudioContext = () => {
     try {
-      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
-      const oscillator = audioContext.createOscillator()
-      const gainNode = audioContext.createGain()
-      
-      oscillator.connect(gainNode)
-      gainNode.connect(audioContext.destination)
-      
-      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
-      oscillator.type = type
-      gainNode.gain.setValueAtTime(volume, audioContext.currentTime)
-      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration)
-      
-      oscillator.start(audioContext.currentTime)
-      oscillator.stop(audioContext.currentTime + duration)
+      return new (window.AudioContext || (window as any).webkitAudioContext)()
     } catch (error) {
       console.log('Audio not supported')
+      return null
     }
+  }
+
+  const playComplexSound = (config: {
+    frequencies: number[]
+    durations: number[]
+    types: ('sine' | 'square' | 'sawtooth' | 'triangle')[]
+    volumes: number[]
+    delays?: number[]
+    noiseAmount?: number
+  }) => {
+    const audioContext = createAudioContext()
+    if (!audioContext) return
+
+    config.frequencies.forEach((freq, index) => {
+      const delay = config.delays?.[index] || 0
+      
+      setTimeout(() => {
+        const oscillator = audioContext.createOscillator()
+        const gainNode = audioContext.createGain()
+        const filterNode = audioContext.createBiquadFilter()
+        
+        // Add noise for realism
+        let noiseBuffer: AudioBuffer | null = null
+        let noiseSource: AudioBufferSourceNode | null = null
+        
+        if (config.noiseAmount && config.noiseAmount > 0) {
+          const bufferSize = audioContext.sampleRate * 0.1
+          noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate)
+          const output = noiseBuffer.getChannelData(0)
+          
+          for (let i = 0; i < bufferSize; i++) {
+            output[i] = (Math.random() * 2 - 1) * config.noiseAmount
+          }
+          
+          noiseSource = audioContext.createBufferSource()
+          noiseSource.buffer = noiseBuffer
+          noiseSource.loop = true
+          
+          const noiseGain = audioContext.createGain()
+          noiseGain.gain.setValueAtTime(config.volumes[index] * 0.3, audioContext.currentTime)
+          noiseSource.connect(noiseGain)
+          noiseGain.connect(audioContext.destination)
+          noiseSource.start(audioContext.currentTime)
+          noiseSource.stop(audioContext.currentTime + config.durations[index])
+        }
+        
+        // Setup oscillator
+        oscillator.connect(filterNode)
+        filterNode.connect(gainNode)
+        gainNode.connect(audioContext.destination)
+        
+        oscillator.frequency.setValueAtTime(freq, audioContext.currentTime)
+        oscillator.type = config.types[index] || 'sine'
+        
+        // Dynamic frequency modulation for realism
+        if (index === 0) {
+          oscillator.frequency.exponentialRampToValueAtTime(freq * 0.7, audioContext.currentTime + config.durations[index] * 0.8)
+        }
+        
+        // Filter for more realistic sound
+        filterNode.type = 'lowpass'
+        filterNode.frequency.setValueAtTime(freq * 3, audioContext.currentTime)
+        filterNode.frequency.exponentialRampToValueAtTime(freq * 0.5, audioContext.currentTime + config.durations[index])
+        
+        // Volume envelope
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime)
+        gainNode.gain.linearRampToValueAtTime(config.volumes[index], audioContext.currentTime + 0.01)
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + config.durations[index])
+        
+        oscillator.start(audioContext.currentTime)
+        oscillator.stop(audioContext.currentTime + config.durations[index])
+      }, delay)
+    })
   }
   
   const playWeaponSound = (weaponType: string) => {
     switch (weaponType) {
       case 'bazooka':
-        playSound(150, 0.5, 'square', 0.2) // Deep boom
+        // Realistic rocket launcher: whoosh + ignition + propulsion
+        playComplexSound({
+          frequencies: [200, 80, 150, 300],
+          durations: [0.1, 0.3, 0.4, 0.2],
+          types: ['sawtooth', 'square', 'triangle', 'sine'],
+          volumes: [0.15, 0.25, 0.2, 0.1],
+          delays: [0, 50, 100, 200],
+          noiseAmount: 0.3
+        })
         break
+        
       case 'grenade':
-        playSound(200, 0.3, 'sawtooth', 0.15) // Metallic clank
+        // Realistic grenade throw: metallic clink + pin pull + throw whoosh
+        playComplexSound({
+          frequencies: [800, 400, 200, 150],
+          durations: [0.05, 0.1, 0.15, 0.2],
+          types: ['square', 'triangle', 'sawtooth', 'sine'],
+          volumes: [0.2, 0.15, 0.1, 0.08],
+          delays: [0, 30, 80, 120],
+          noiseAmount: 0.2
+        })
         break
+        
       case 'shotgun':
-        playSound(300, 0.2, 'square', 0.25) // Sharp bang
+        // Realistic shotgun: sharp crack + echo + shell ejection
+        playComplexSound({
+          frequencies: [1200, 400, 800, 300],
+          durations: [0.05, 0.2, 0.1, 0.15],
+          types: ['square', 'sawtooth', 'triangle', 'square'],
+          volumes: [0.3, 0.25, 0.15, 0.1],
+          delays: [0, 20, 100, 200],
+          noiseAmount: 0.4
+        })
         break
+        
       case 'uzi':
-        playSound(400, 0.1, 'square', 0.1) // Quick pop
+        // Realistic machine gun: rapid fire crack + mechanical action
+        playComplexSound({
+          frequencies: [600, 300, 1000],
+          durations: [0.03, 0.05, 0.02],
+          types: ['square', 'sawtooth', 'triangle'],
+          volumes: [0.15, 0.12, 0.08],
+          delays: [0, 10, 20],
+          noiseAmount: 0.25
+        })
         break
+        
       case 'dynamite':
-        playSound(100, 0.8, 'square', 0.3) // Massive boom
+        // Realistic dynamite: fuse hiss + ignition spark
+        playComplexSound({
+          frequencies: [2000, 800, 400, 200],
+          durations: [0.3, 0.2, 0.4, 0.6],
+          types: ['sawtooth', 'triangle', 'square', 'sine'],
+          volumes: [0.1, 0.15, 0.2, 0.25],
+          delays: [0, 100, 200, 400],
+          noiseAmount: 0.5
+        })
         break
+        
       case 'drill':
-        playSound(800, 0.4, 'sawtooth', 0.2) // Drilling sound
+        // Realistic drill: motor start + drilling + metal grinding
+        playComplexSound({
+          frequencies: [1500, 800, 1200, 600],
+          durations: [0.1, 0.3, 0.2, 0.4],
+          types: ['sawtooth', 'square', 'triangle', 'sawtooth'],
+          volumes: [0.2, 0.25, 0.2, 0.15],
+          delays: [0, 50, 150, 250],
+          noiseAmount: 0.6
+        })
         break
     }
   }
@@ -132,29 +246,102 @@ const GameArena: React.FC = () => {
   const playExplosionSound = (weaponType: string) => {
     switch (weaponType) {
       case 'bazooka':
-        playSound(80, 0.8, 'square', 0.3)
-        setTimeout(() => playSound(120, 0.4, 'triangle', 0.2), 100)
+        // Realistic rocket explosion: initial blast + rumble + debris
+        playComplexSound({
+          frequencies: [60, 120, 200, 80, 40],
+          durations: [0.2, 0.4, 0.3, 0.6, 0.8],
+          types: ['square', 'sawtooth', 'triangle', 'square', 'sine'],
+          volumes: [0.4, 0.35, 0.25, 0.3, 0.2],
+          delays: [0, 50, 100, 200, 400],
+          noiseAmount: 0.7
+        })
         break
+        
       case 'grenade':
-        playSound(90, 0.6, 'square', 0.25)
-        setTimeout(() => playSound(150, 0.3, 'sawtooth', 0.15), 50)
+        // Realistic grenade explosion: sharp crack + pressure wave + shrapnel
+        playComplexSound({
+          frequencies: [80, 150, 300, 100, 60],
+          durations: [0.15, 0.3, 0.2, 0.5, 0.7],
+          types: ['square', 'sawtooth', 'triangle', 'square', 'sine'],
+          volumes: [0.35, 0.3, 0.2, 0.25, 0.15],
+          delays: [0, 30, 80, 150, 300],
+          noiseAmount: 0.6
+        })
         break
+        
       case 'shotgun':
-        playSound(200, 0.3, 'square', 0.2)
+        // Realistic shotgun impact: pellet spread + surface impact
+        playComplexSound({
+          frequencies: [400, 800, 200, 600],
+          durations: [0.1, 0.05, 0.2, 0.15],
+          types: ['square', 'triangle', 'sawtooth', 'square'],
+          volumes: [0.25, 0.2, 0.15, 0.1],
+          delays: [0, 20, 50, 100],
+          noiseAmount: 0.4
+        })
         break
+        
       case 'uzi':
-        playSound(250, 0.2, 'square', 0.15)
+        // Realistic bullet impact: crack + ricochet
+        playComplexSound({
+          frequencies: [800, 400, 1200, 300],
+          durations: [0.05, 0.1, 0.03, 0.15],
+          types: ['square', 'triangle', 'sawtooth', 'sine'],
+          volumes: [0.2, 0.15, 0.1, 0.08],
+          delays: [0, 20, 40, 80],
+          noiseAmount: 0.3
+        })
         break
+        
       case 'dynamite':
-        playSound(60, 1.2, 'square', 0.4)
-        setTimeout(() => playSound(100, 0.8, 'triangle', 0.3), 200)
-        setTimeout(() => playSound(150, 0.4, 'sine', 0.2), 400)
+        // Realistic dynamite explosion: massive blast + ground shake + echo
+        playComplexSound({
+          frequencies: [40, 80, 160, 60, 30, 100],
+          durations: [0.3, 0.5, 0.4, 0.8, 1.0, 0.6],
+          types: ['square', 'sawtooth', 'triangle', 'square', 'sine', 'triangle'],
+          volumes: [0.5, 0.45, 0.35, 0.4, 0.3, 0.25],
+          delays: [0, 100, 200, 300, 500, 700],
+          noiseAmount: 0.8
+        })
         break
+        
       case 'drill':
-        playSound(300, 0.6, 'sawtooth', 0.25)
-        setTimeout(() => playSound(200, 0.4, 'triangle', 0.2), 100)
+        // Realistic drill impact: metal grinding + sparks + debris
+        playComplexSound({
+          frequencies: [1000, 500, 1500, 300, 800],
+          durations: [0.2, 0.3, 0.15, 0.4, 0.25],
+          types: ['sawtooth', 'square', 'triangle', 'sawtooth', 'square'],
+          volumes: [0.3, 0.25, 0.2, 0.15, 0.2],
+          delays: [0, 50, 100, 200, 300],
+          noiseAmount: 0.7
+        })
         break
     }
+  }
+
+  // Additional realistic sound effects
+  const playBounceSound = () => {
+    // Realistic grenade bounce: metallic clang + roll
+    playComplexSound({
+      frequencies: [600, 300, 800],
+      durations: [0.05, 0.1, 0.08],
+      types: ['triangle', 'square', 'sawtooth'],
+      volumes: [0.15, 0.1, 0.08],
+      delays: [0, 20, 50],
+      noiseAmount: 0.2
+    })
+  }
+
+  const playReloadSound = () => {
+    // Realistic weapon reload: click + mechanical action
+    playComplexSound({
+      frequencies: [400, 800, 200],
+      durations: [0.05, 0.03, 0.1],
+      types: ['square', 'triangle', 'sawtooth'],
+      volumes: [0.1, 0.08, 0.06],
+      delays: [0, 30, 80],
+      noiseAmount: 0.1
+    })
   }
 
   const [gameState, setGameState] = useState<GameState>({
@@ -1180,7 +1367,7 @@ const GameArena: React.FC = () => {
           
           // Play bounce sound if bounced
           if (bounced) {
-            playSound(300, 0.1, 'square', 0.1)
+            playBounceSound()
           }
           
           return {
@@ -1260,43 +1447,96 @@ const GameArena: React.FC = () => {
     const power = (gameState.power / 100) * 25 // Increased power scaling for more noticeable difference
     const angle = (gameState.angle * Math.PI) / 180
 
-    const vx = Math.cos(angle) * power
-    const vy = -Math.sin(angle) * power // Negative for upward trajectory
+    const baseVx = Math.cos(angle) * power
+    const baseVy = -Math.sin(angle) * power // Negative for upward trajectory
 
     const weapon = [...VEGAN_WEAPONS, ...MEAT_WEAPONS].find(w => w.id === gameState.selectedWeapon)
     
-    console.log('Firing projectile:', { 
+    console.log('Firing weapon:', { 
       weapon: gameState.selectedWeapon,
       weaponFuseTime: weapon?.fuseTime,
       power: gameState.power, 
       angle: gameState.angle, 
-      vx, 
-      vy,
+      baseVx, 
+      baseVy,
       startPos: { x: currentChar.x, y: currentChar.y }
     })
-    
-    const projectile: Projectile = {
-      x: currentChar.x,
-      y: currentChar.y - 10, // Start slightly above character
-      vx,
-      vy,
-      type: gameState.selectedWeapon,
-      team: currentChar.team,
-      active: true,
-      bounces: 0,
-      fuseTime: weapon?.fuseTime || 0 // This should be 180 for grenades
+
+    // UZI fires multiple projectiles in a burst
+    if (gameState.selectedWeapon === 'uzi') {
+      const projectiles: Projectile[] = []
+      const burstCount = 5 // Fire 5 bullets in rapid succession
+      
+      for (let i = 0; i < burstCount; i++) {
+        // Add spread to each bullet (realistic machine gun spread)
+        const spreadAngle = (Math.random() - 0.5) * 0.3 // ±0.15 radians spread
+        const spreadPower = 0.9 + Math.random() * 0.2 // 90-110% power variation
+        
+        const vx = Math.cos(angle + spreadAngle) * power * spreadPower
+        const vy = -Math.sin(angle + spreadAngle) * power * spreadPower
+        
+        const projectile: Projectile = {
+          x: currentChar.x + (Math.random() - 0.5) * 4, // Slight position spread
+          y: currentChar.y - 10 + (Math.random() - 0.5) * 2, // Slight vertical spread
+          vx,
+          vy,
+          type: gameState.selectedWeapon,
+          team: currentChar.team,
+          active: true,
+          bounces: 0,
+          fuseTime: weapon?.fuseTime || 0
+        }
+        
+        projectiles.push(projectile)
+      }
+      
+      // Fire bullets with slight delays for realistic burst effect
+      projectiles.forEach((projectile, index) => {
+        setTimeout(() => {
+          // Play realistic rapid fire sound for each bullet
+          playWeaponSound('uzi')
+          
+          setGameState(prev => ({
+            ...prev,
+            projectiles: [...prev.projectiles, projectile]
+          }))
+        }, index * 80) // 80ms delay between each bullet
+      })
+      
+      console.log(`🔫 UZI BURST: Firing ${burstCount} bullets with spread and timing delays`)
+      
+    } else {
+      // Single projectile for other weapons
+      const projectile: Projectile = {
+        x: currentChar.x,
+        y: currentChar.y - 10, // Start slightly above character
+        vx: baseVx,
+        vy: baseVy,
+        type: gameState.selectedWeapon,
+        team: currentChar.team,
+        active: true,
+        bounces: 0,
+        fuseTime: weapon?.fuseTime || 0 // This should be 180 for grenades
+      }
+
+      setGameState(prev => ({
+        ...prev,
+        projectiles: [...prev.projectiles, projectile]
+      }))
     }
 
-    // Play weapon sound
-    playWeaponSound(gameState.selectedWeapon)
+    // Play weapon sound (for non-Uzi weapons, Uzi plays individual bullet sounds)
+    if (gameState.selectedWeapon !== 'uzi') {
+      playWeaponSound(gameState.selectedWeapon)
+    }
 
     setGameState(prev => ({
       ...prev,
-      projectiles: [...prev.projectiles, projectile],
       gamePhase: 'firing'
     }))
 
-    // Switch turns after 3 seconds
+    // Switch turns after 4 seconds (longer for Uzi burst to complete)
+    const turnDelay = gameState.selectedWeapon === 'uzi' ? 4000 : 3000
     setTimeout(() => {
       setGameState(prev => {
         const aliveCharacters = prev.characters.filter(c => c.health > 0)
@@ -1333,7 +1573,7 @@ const GameArena: React.FC = () => {
           }))
         }
       })
-    }, 3000)
+    }, turnDelay)
   }
 
   // Initialize game
@@ -1523,17 +1763,19 @@ const GameArena: React.FC = () => {
                 size="sm"
                 onClick={() => setGameState(prev => ({ ...prev, selectedWeapon: weapon.id }))}
                 className="text-xs p-2 h-auto"
-                title={weapon.id === 'drill' ? 'Tunnel Digger - Creates deep holes!' : `Damage: ${weapon.damage}, Radius: ${weapon.explosionRadius}`}
+                title={weapon.id === 'drill' ? 'Tunnel Digger - Creates deep holes!' : weapon.id === 'uzi' ? 'Machine Gun - Fires 5 bullets in rapid succession!' : `Damage: ${weapon.damage}, Radius: ${weapon.explosionRadius}`}
               >
                 {weapon.name}
                 {weapon.id === 'grenade' && ' 💣'}
                 {weapon.id === 'drill' && ' ⛏️'}
+                {weapon.id === 'uzi' && ' 🔫'}
               </Button>
             ))}
           </div>
           <div className="text-xs text-gray-500 mt-2">
             💣 Grenades bounce and have a 3-second fuse!<br/>
-            ⛏️ Drill creates deep tunnels through terrain!
+            ⛏️ Drill creates deep tunnels through terrain!<br/>
+            🔫 Uzi fires 5 bullets in rapid succession with spread!
           </div>
         </Card>
 
@@ -1640,6 +1882,11 @@ const GameArena: React.FC = () => {
                 {gameState.projectiles.some(p => p.type === 'grenade') && (
                   <div className="text-xs text-orange-600 mt-1">
                     💣 Grenade bouncing and counting down!
+                  </div>
+                )}
+                {gameState.projectiles.some(p => p.type === 'uzi') && (
+                  <div className="text-xs text-blue-600 mt-1">
+                    🔫 Uzi burst fire in progress!
                   </div>
                 )}
               </div>
