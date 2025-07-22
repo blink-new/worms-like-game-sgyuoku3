@@ -1074,8 +1074,14 @@ const GameArena: React.FC = () => {
           // Decrement fuse timer AFTER physics and bouncing
           proj.fuseTime--
           
+          // Debug logging for grenade fuse
+          if (proj.fuseTime % 30 === 0) { // Log every half second
+            console.log(`Grenade fuse: ${proj.fuseTime} frames remaining (${(proj.fuseTime/60).toFixed(1)}s)`)
+          }
+          
           // Explode when fuse runs out (exactly 3 seconds after launch)
           if (proj.fuseTime <= 0) {
+            console.log('Grenade exploding!')
             proj.active = false
             
             // Create explosion
@@ -1165,16 +1171,17 @@ const GameArena: React.FC = () => {
     const vx = Math.cos(angle) * power
     const vy = -Math.sin(angle) * power // Negative for upward trajectory
 
+    const weapon = [...VEGAN_WEAPONS, ...MEAT_WEAPONS].find(w => w.id === gameState.selectedWeapon)
+    
     console.log('Firing projectile:', { 
       weapon: gameState.selectedWeapon,
+      weaponFuseTime: weapon?.fuseTime,
       power: gameState.power, 
       angle: gameState.angle, 
       vx, 
       vy,
       startPos: { x: currentChar.x, y: currentChar.y }
     })
-
-    const weapon = [...VEGAN_WEAPONS, ...MEAT_WEAPONS].find(w => w.id === gameState.selectedWeapon)
     
     const projectile: Projectile = {
       x: currentChar.x,
@@ -1185,7 +1192,7 @@ const GameArena: React.FC = () => {
       team: currentChar.team,
       active: true,
       bounces: 0,
-      fuseTime: weapon?.fuseTime || 0
+      fuseTime: weapon?.fuseTime || 0 // This should be 180 for grenades
     }
 
     // Play weapon sound
