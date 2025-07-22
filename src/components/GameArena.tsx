@@ -1052,8 +1052,45 @@ const GameArena: React.FC = () => {
     const weapon = [...VEGAN_WEAPONS, ...MEAT_WEAPONS].find(w => w.id === weaponType)
     const explosionRadius = weapon ? weapon.explosionRadius || weapon.damage : 30
     
+    // Weapon-specific particle settings for better timing
+    let particleCount: number
+    let particleLife: number
+    let flashLife: number
+    
+    switch (weaponType) {
+      case 'shotgun':
+      case 'uzi':
+        // Quick, minimal effects for guns - clear in 0.5 seconds max
+        particleCount = 15
+        particleLife = 30 // 0.5 seconds at 60fps
+        flashLife = 10 // 0.17 seconds flash
+        break
+      case 'bazooka':
+        // Medium explosion - clear in 1 second
+        particleCount = 25
+        particleLife = 60 // 1 second
+        flashLife = 15 // 0.25 seconds flash
+        break
+      case 'grenade':
+      case 'dynamite':
+        // Bigger explosions - clear in 1.5 seconds max
+        particleCount = 35
+        particleLife = 90 // 1.5 seconds
+        flashLife = 20 // 0.33 seconds flash
+        break
+      case 'drill':
+        // Drill sparks - clear in 1 second
+        particleCount = 30
+        particleLife = 60 // 1 second
+        flashLife = 12 // 0.2 seconds flash
+        break
+      default:
+        particleCount = 20
+        particleLife = 45 // 0.75 seconds
+        flashLife = 12
+    }
+    
     const particles = []
-    const particleCount = weaponType === 'drill' ? 40 : 30 // More particles for better visibility
     
     for (let i = 0; i < particleCount; i++) {
       const angle = (Math.PI * 2 * i) / particleCount
@@ -1065,14 +1102,15 @@ const GameArena: React.FC = () => {
         y,
         vx: Math.cos(randomAngle) * speed,
         vy: Math.sin(randomAngle) * speed,
-        life: weaponType === 'drill' ? 90 : 60, // Longer lasting particles
-        maxLife: weaponType === 'drill' ? 90 : 60,
+        life: particleLife,
+        maxLife: particleLife,
         color: getExplosionColor(weaponType, weapon?.color || '#FF6B35')
       })
     }
 
-    // Add additional bright flash particles
-    for (let i = 0; i < 10; i++) {
+    // Add bright flash particles (shorter duration for quick clear)
+    const flashCount = weaponType === 'shotgun' || weaponType === 'uzi' ? 5 : 10
+    for (let i = 0; i < flashCount; i++) {
       const angle = Math.random() * Math.PI * 2
       const speed = Math.random() * 12 + 5
       particles.push({
@@ -1080,8 +1118,8 @@ const GameArena: React.FC = () => {
         y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        life: 20,
-        maxLife: 20,
+        life: flashLife,
+        maxLife: flashLife,
         color: '#FFFFFF' // Bright white flash
       })
     }
@@ -1093,7 +1131,7 @@ const GameArena: React.FC = () => {
       particles
     }
 
-    console.log(`💥 EXPLOSION CREATED at (${x.toFixed(1)}, ${y.toFixed(1)}) with ${particles.length} particles, radius: ${explosionRadius}`)
+    console.log(`💥 EXPLOSION CREATED at (${x.toFixed(1)}, ${y.toFixed(1)}) with ${particles.length} particles, radius: ${explosionRadius}, life: ${particleLife}f (${(particleLife/60).toFixed(1)}s)`)
     return explosion
   }
 
@@ -1573,16 +1611,26 @@ const GameArena: React.FC = () => {
         return updatedProj
       }).filter(proj => proj.active)
 
-      // Update explosion particles
+      // Update explosion particles with faster decay for quick clearing
       newExplosions = newExplosions.map(explosion => ({
         ...explosion,
-        particles: explosion.particles.map(particle => ({
-          ...particle,
-          x: particle.x + particle.vx,
-          y: particle.y + particle.vy,
-          vy: particle.vy + 0.2, // Enhanced gravity on particles to match projectiles
-          life: particle.life - 1
-        })).filter(particle => particle.life > 0)
+        particles: explosion.particles.map(particle => {
+          // Faster life decay for quicker clearing
+          let lifeDecay = 1
+          
+          // Make gun particles fade extra fast
+          if (particle.maxLife <= 30) { // Shotgun/Uzi particles
+            lifeDecay = 2 // Double decay rate for instant clearing
+          }
+          
+          return {
+            ...particle,
+            x: particle.x + particle.vx,
+            y: particle.y + particle.vy,
+            vy: particle.vy + 0.2, // Enhanced gravity on particles to match projectiles
+            life: particle.life - lifeDecay
+          }
+        }).filter(particle => particle.life > 0)
       })).filter(explosion => explosion.particles.length > 0)
 
       // Apply gravity to characters (IMPORTANT: This makes characters fall when terrain is destroyed!)
