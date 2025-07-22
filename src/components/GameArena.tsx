@@ -757,14 +757,45 @@ const GameArena: React.FC = () => {
 
   const drawExplosions = (ctx: CanvasRenderingContext2D) => {
     gameState.explosions.forEach(explosion => {
+      // Draw explosion flash at center
+      if (explosion.particles.length > 0) {
+        const flashAlpha = Math.max(...explosion.particles.map(p => p.life / p.maxLife))
+        if (flashAlpha > 0.5) {
+          ctx.globalAlpha = (flashAlpha - 0.5) * 2 // Bright flash for first half of explosion
+          ctx.fillStyle = '#FFFFFF'
+          ctx.beginPath()
+          ctx.arc(explosion.x, explosion.y, explosion.radius * 0.3, 0, Math.PI * 2)
+          ctx.fill()
+          
+          // Outer explosion ring
+          ctx.globalAlpha = (flashAlpha - 0.5) * 1.5
+          ctx.fillStyle = '#FF4500'
+          ctx.beginPath()
+          ctx.arc(explosion.x, explosion.y, explosion.radius * 0.6, 0, Math.PI * 2)
+          ctx.fill()
+        }
+      }
+      
+      // Draw individual particles
       explosion.particles.forEach(particle => {
         if (particle.life > 0) {
-          const alpha = particle.life / particle.maxLife
+          const alpha = Math.min(particle.life / particle.maxLife, 0.9)
           ctx.globalAlpha = alpha
           ctx.fillStyle = particle.color
+          
+          // Make particles bigger and more visible
+          const particleSize = particle.color === '#FFFFFF' ? 4 : 3 // White flash particles are bigger
           ctx.beginPath()
-          ctx.arc(particle.x, particle.y, 2, 0, Math.PI * 2)
+          ctx.arc(particle.x, particle.y, particleSize, 0, Math.PI * 2)
           ctx.fill()
+          
+          // Add glow effect for bright particles
+          if (particle.color === '#FFFFFF' || particle.color.includes('FF')) {
+            ctx.globalAlpha = alpha * 0.3
+            ctx.beginPath()
+            ctx.arc(particle.x, particle.y, particleSize * 2, 0, Math.PI * 2)
+            ctx.fill()
+          }
         }
       })
     })
@@ -815,24 +846,56 @@ const GameArena: React.FC = () => {
     }))
   }
 
+  const getExplosionColor = (weaponType: string, baseColor: string) => {
+    switch (weaponType) {
+      case 'grenade':
+        return Math.random() > 0.5 ? '#FF4500' : '#FF6B35' // Orange/red explosion
+      case 'bazooka':
+        return Math.random() > 0.5 ? '#FF0000' : '#FF4500' // Red explosion
+      case 'dynamite':
+        return Math.random() > 0.5 ? '#FF1493' : '#FF4500' // Pink/red explosion
+      case 'drill':
+        return Math.random() > 0.5 ? '#FFD700' : '#FFA500' // Gold/orange sparks
+      default:
+        return baseColor
+    }
+  }
+
   const createExplosion = (x: number, y: number, weaponType: string) => {
     const weapon = [...VEGAN_WEAPONS, ...MEAT_WEAPONS].find(w => w.id === weaponType)
     const explosionRadius = weapon ? weapon.explosionRadius || weapon.damage : 30
     
     const particles = []
-    const particleCount = weaponType === 'drill' ? 30 : 20 // More particles for drill
+    const particleCount = weaponType === 'drill' ? 40 : 30 // More particles for better visibility
     
     for (let i = 0; i < particleCount; i++) {
       const angle = (Math.PI * 2 * i) / particleCount
-      const speed = Math.random() * 5 + 2
+      const speed = Math.random() * 8 + 3 // Faster particles for more dramatic effect
+      const randomAngle = angle + (Math.random() - 0.5) * 0.5 // Add some randomness
+      
+      particles.push({
+        x,
+        y,
+        vx: Math.cos(randomAngle) * speed,
+        vy: Math.sin(randomAngle) * speed,
+        life: weaponType === 'drill' ? 90 : 60, // Longer lasting particles
+        maxLife: weaponType === 'drill' ? 90 : 60,
+        color: getExplosionColor(weaponType, weapon?.color || '#FF6B35')
+      })
+    }
+
+    // Add additional bright flash particles
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * Math.PI * 2
+      const speed = Math.random() * 12 + 5
       particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed,
         vy: Math.sin(angle) * speed,
-        life: weaponType === 'drill' ? 60 : 30, // Longer for drill
-        maxLife: weaponType === 'drill' ? 60 : 30,
-        color: weapon?.color || '#FF6B35'
+        life: 20,
+        maxLife: 20,
+        color: '#FFFFFF' // Bright white flash
       })
     }
 
@@ -843,29 +906,36 @@ const GameArena: React.FC = () => {
       particles
     }
 
+    console.log(`💥 EXPLOSION CREATED at (${x.toFixed(1)}, ${y.toFixed(1)}) with ${particles.length} particles, radius: ${explosionRadius}`)
     return explosion
   }
 
   const destroyTerrain = (x: number, y: number, radius: number, weaponType?: string) => {
     const terrainCopy = [...gameState.terrain]
     
+    console.log(`🕳️ DESTROYING TERRAIN at (${x.toFixed(1)}, ${y.toFixed(1)}) with radius: ${radius}, weapon: ${weaponType}`)
+    
     for (let i = 0; i < terrainCopy.length; i++) {
       const terrainX = i * 5
       const distance = Math.sqrt((terrainX - x) ** 2 + (terrainCopy[i] - y) ** 2)
       
       if (distance < radius) {
-        let destructionAmount = (1 - distance / radius) * radius
+        let destructionAmount = (1 - distance / radius) * radius * 1.5 // Increased destruction multiplier
         
         // Drill creates deeper, narrower tunnels
         if (weaponType === 'drill') {
-          destructionAmount *= 2 // Double destruction for drill
+          destructionAmount *= 3 // Triple destruction for drill
           // Create vertical tunnel effect
           if (Math.abs(terrainX - x) < 15) {
-            destructionAmount *= 1.5
+            destructionAmount *= 2
           }
         }
         
-        terrainCopy[i] = Math.max(terrainCopy[i] + destructionAmount, 500) // Don't go below canvas
+        // Make sure we create visible holes by adding more destruction
+        const oldHeight = terrainCopy[i]
+        terrainCopy[i] = Math.min(terrainCopy[i] + destructionAmount, 500) // Don't go below canvas bottom
+        
+        console.log(`  Terrain point ${i} (x=${terrainX}): ${oldHeight.toFixed(1)} → ${terrainCopy[i].toFixed(1)} (destroyed ${destructionAmount.toFixed(1)})`)
       }
     }
     
