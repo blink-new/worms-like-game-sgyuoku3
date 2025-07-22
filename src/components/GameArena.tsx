@@ -915,29 +915,41 @@ const GameArena: React.FC = () => {
     
     console.log(`🕳️ DESTROYING TERRAIN at (${x.toFixed(1)}, ${y.toFixed(1)}) with radius: ${radius}, weapon: ${weaponType}`)
     
+    let pointsDestroyed = 0
+    
     for (let i = 0; i < terrainCopy.length; i++) {
       const terrainX = i * 5
       const distance = Math.sqrt((terrainX - x) ** 2 + (terrainCopy[i] - y) ** 2)
       
       if (distance < radius) {
-        let destructionAmount = (1 - distance / radius) * radius * 1.5 // Increased destruction multiplier
+        let destructionAmount = (1 - distance / radius) * radius * 2.5 // Even more destruction multiplier
         
         // Drill creates deeper, narrower tunnels
         if (weaponType === 'drill') {
-          destructionAmount *= 3 // Triple destruction for drill
+          destructionAmount *= 4 // Quadruple destruction for drill
           // Create vertical tunnel effect
-          if (Math.abs(terrainX - x) < 15) {
+          if (Math.abs(terrainX - x) < 20) {
             destructionAmount *= 2
           }
+        }
+        
+        // Grenades create bigger holes
+        if (weaponType === 'grenade') {
+          destructionAmount *= 1.8 // Extra destruction for grenades
         }
         
         // Make sure we create visible holes by adding more destruction
         const oldHeight = terrainCopy[i]
         terrainCopy[i] = Math.min(terrainCopy[i] + destructionAmount, 500) // Don't go below canvas bottom
         
-        console.log(`  Terrain point ${i} (x=${terrainX}): ${oldHeight.toFixed(1)} → ${terrainCopy[i].toFixed(1)} (destroyed ${destructionAmount.toFixed(1)})`)
+        if (destructionAmount > 5) { // Only log significant destruction
+          console.log(`  🔥 Terrain point ${i} (x=${terrainX}): ${oldHeight.toFixed(1)} → ${terrainCopy[i].toFixed(1)} (destroyed ${destructionAmount.toFixed(1)})`)
+          pointsDestroyed++
+        }
       }
     }
+    
+    console.log(`✅ TERRAIN DESTRUCTION COMPLETE: ${pointsDestroyed} points destroyed`)
     
     return terrainCopy
   }
@@ -1104,35 +1116,65 @@ const GameArena: React.FC = () => {
         
         // Handle grenade special physics
         if (proj.type === 'grenade') {
-          // Apply physics first
-          proj.vx += prev.wind * 0.02
-          proj.vy += 0.5 // Gravity
-          proj.x += proj.vx
-          proj.y += proj.vy
+          // Decrement fuse timer FIRST (this is the key fix!)
+          const newFuseTime = proj.fuseTime - 1
+          
+          // Debug logging for grenade fuse
+          if (newFuseTime % 30 === 0) { // Log every half second
+            console.log(`🎯 Grenade fuse: ${newFuseTime} frames remaining (${(newFuseTime/60).toFixed(1)}s)`)
+          }
+          
+          // Check if grenade should explode BEFORE physics
+          if (newFuseTime <= 0) {
+            console.log('💥 GRENADE EXPLODING!')
+            
+            // Create explosion immediately
+            const explosion = createExplosion(proj.x, proj.y, proj.type)
+            newExplosions.push(explosion)
+            playExplosionSound(proj.type)
+            
+            // Destroy terrain immediately
+            const explosionRadius = weapon ? weapon.explosionRadius || weapon.damage : 35
+            newTerrain = destroyTerrain(proj.x, proj.y, explosionRadius, proj.type)
+            
+            // Apply damage to characters immediately
+            newCharacters = applyDamage(proj.x, proj.y, weapon?.damage || 50, explosionRadius)
+            
+            // Mark projectile as inactive
+            return { ...proj, active: false }
+          }
+          
+          // Apply physics AFTER fuse check
+          const newVx = proj.vx + prev.wind * 0.02
+          const newVy = proj.vy + 0.5 // Gravity
+          let newX = proj.x + newVx
+          let newY = proj.y + newVy
           
           // Check for bouncing on all surfaces
           let bounced = false
+          let finalVx = newVx
+          let finalVy = newVy
           
           // Bounce off left/right screen boundaries
-          if (proj.x <= 0 || proj.x >= 1000) {
-            proj.vx = -proj.vx * 0.4 // Smaller bounce coefficient
-            proj.x = proj.x <= 0 ? 0 : 1000 // Keep in bounds
+          if (newX <= 0 || newX >= 1000) {
+            finalVx = -finalVx * 0.4 // Smaller bounce coefficient
+            newX = newX <= 0 ? 0 : 1000 // Keep in bounds
             bounced = true
           }
           
           // Bounce off top boundary
-          if (proj.y <= 0) {
-            proj.vy = -proj.vy * 0.4 // Smaller bounce coefficient
-            proj.y = 0 // Keep in bounds
+          if (newY <= 0) {
+            finalVy = -finalVy * 0.4 // Smaller bounce coefficient
+            newY = 0 // Keep in bounds
             bounced = true
           }
           
           // Bounce off terrain
-          const terrainHeight = getTerrainHeight(proj.x, prev.terrain)
-          if (proj.y >= terrainHeight - 5) {
-            proj.vy = -Math.abs(proj.vy) * 0.4 // Smaller bounce coefficient
-            proj.vx *= 0.6 // Increased friction
-            proj.y = terrainHeight - 5 // Keep above terrain
+          const terrainHeight = getTerrainHeight(newX, prev.terrain)
+          if (newY >= terrainHeight - 5) {
+            finalVy = -Math.abs(finalVy) * 0.4 // Smaller bounce coefficient
+            finalVx *= 0.6 // Increased friction
+            newY = terrainHeight - 5 // Keep above terrain
             bounced = true
           }
           
@@ -1141,35 +1183,14 @@ const GameArena: React.FC = () => {
             playSound(300, 0.1, 'square', 0.1)
           }
           
-          // Decrement fuse timer AFTER physics and bouncing
-          proj.fuseTime--
-          
-          // Debug logging for grenade fuse
-          if (proj.fuseTime % 30 === 0) { // Log every half second
-            console.log(`Grenade fuse: ${proj.fuseTime} frames remaining (${(proj.fuseTime/60).toFixed(1)}s)`)
+          return {
+            ...proj,
+            x: newX,
+            y: newY,
+            vx: finalVx,
+            vy: finalVy,
+            fuseTime: newFuseTime
           }
-          
-          // Explode when fuse runs out (exactly 3 seconds after launch)
-          if (proj.fuseTime <= 0) {
-            console.log('Grenade exploding!')
-            proj.active = false
-            
-            // Create explosion
-            const explosion = createExplosion(proj.x, proj.y, proj.type)
-            newExplosions.push(explosion)
-            playExplosionSound(proj.type)
-            
-            // Destroy terrain
-            const explosionRadius = weapon ? weapon.explosionRadius || weapon.damage : 30
-            newTerrain = destroyTerrain(proj.x, proj.y, explosionRadius, proj.type)
-            
-            // Apply damage to characters
-            newCharacters = applyDamage(proj.x, proj.y, weapon?.damage || 30, explosionRadius)
-            
-            return proj
-          }
-          
-          return proj
         }
         
         // Apply physics with enhanced gravity - create new object to avoid mutation
@@ -1183,6 +1204,7 @@ const GameArena: React.FC = () => {
 
         // Check collisions for non-grenade projectiles
         if (checkCollision(updatedProj)) {
+          console.log(`💥 ${updatedProj.type.toUpperCase()} HIT at (${updatedProj.x.toFixed(1)}, ${updatedProj.y.toFixed(1)})!`)
           updatedProj.active = false
           
           // Create explosion
