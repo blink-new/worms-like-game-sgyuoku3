@@ -1032,11 +1032,11 @@ const GameArena: React.FC = () => {
 
         const weapon = [...VEGAN_WEAPONS, ...MEAT_WEAPONS].find(w => w.id === proj.type)
         
-        // Handle grenade bouncing and fuse timer
+        // Handle grenade special physics
         if (proj.type === 'grenade') {
           proj.fuseTime--
           
-          // Explode when fuse runs out
+          // Explode when fuse runs out (3 seconds after launch)
           if (proj.fuseTime <= 0) {
             proj.active = false
             
@@ -1055,19 +1055,44 @@ const GameArena: React.FC = () => {
             return proj
           }
           
-          // Check for bouncing
-          if (checkCollision(proj) && proj.bounces < 3) {
-            // Bounce off terrain
-            proj.vy = -Math.abs(proj.vy) * 0.6 // Bounce up with reduced velocity
-            proj.vx *= 0.8 // Reduce horizontal velocity
-            proj.bounces++
-            proj.y -= 5 // Move slightly up to avoid getting stuck
-            
-            // Play bounce sound
-            playSound(300, 0.1, 'square', 0.1)
-            
-            return proj
+          // Apply physics first
+          proj.vx += prev.wind * 0.02
+          proj.vy += 0.5 // Gravity
+          proj.x += proj.vx
+          proj.y += proj.vy
+          
+          // Check for bouncing on all surfaces
+          let bounced = false
+          
+          // Bounce off left/right screen boundaries
+          if (proj.x <= 0 || proj.x >= 1000) {
+            proj.vx = -proj.vx * 0.7 // Reverse and reduce horizontal velocity
+            proj.x = proj.x <= 0 ? 0 : 1000 // Keep in bounds
+            bounced = true
           }
+          
+          // Bounce off top boundary
+          if (proj.y <= 0) {
+            proj.vy = -proj.vy * 0.7 // Reverse and reduce vertical velocity
+            proj.y = 0 // Keep in bounds
+            bounced = true
+          }
+          
+          // Bounce off terrain
+          const terrainHeight = getTerrainHeight(proj.x, prev.terrain)
+          if (proj.y >= terrainHeight - 5) {
+            proj.vy = -Math.abs(proj.vy) * 0.7 // Bounce up with reduced velocity
+            proj.vx *= 0.8 // Reduce horizontal velocity from friction
+            proj.y = terrainHeight - 5 // Keep above terrain
+            bounced = true
+          }
+          
+          // Play bounce sound if bounced
+          if (bounced) {
+            playSound(300, 0.1, 'square', 0.1)
+          }
+          
+          return proj
         }
         
         // Apply physics with enhanced gravity - create new object to avoid mutation
@@ -1079,8 +1104,8 @@ const GameArena: React.FC = () => {
           y: proj.y + proj.vy
         }
 
-        // Check collisions using updated position (skip for bouncing grenades that haven't exploded)
-        if (checkCollision(updatedProj) && !(proj.type === 'grenade' && proj.bounces < 3)) {
+        // Check collisions for non-grenade projectiles
+        if (checkCollision(updatedProj)) {
           updatedProj.active = false
           
           // Create explosion
@@ -1096,8 +1121,8 @@ const GameArena: React.FC = () => {
           newCharacters = applyDamage(updatedProj.x, updatedProj.y, weapon?.damage || 30, explosionRadius)
         }
 
-        // Remove projectiles that go off screen
-        if (updatedProj.x < -50 || updatedProj.x > 1050 || updatedProj.y > 550) {
+        // Remove projectiles that go off screen (except grenades which bounce)
+        if (updatedProj.type !== 'grenade' && (updatedProj.x < -50 || updatedProj.x > 1050 || updatedProj.y > 550)) {
           updatedProj.active = false
         }
 
